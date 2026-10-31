@@ -1,0 +1,104 @@
+name: ha-lab-patroni
+
+services:
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.6.0
+    restart: "no"
+
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd-01
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd-01=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=ha-lab-etcd
+      - --enable-grpc-gateway=true
+
+    volumes:
+      - etcd_data:/etcd-data
+
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/etcdctl
+        - --endpoints=http://127.0.0.1:2379
+        - endpoint
+        - health
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  pg-01:
+    build: .
+    image: ha-lab-patroni:4.1.5-pg17
+    restart: "no"
+
+    environment:
+      PATRONI_NAME: pg-01
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-01:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-01:5432
+      PATRONI_SUPERUSER_USERNAME: labadmin
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD}
+
+    ports:
+      - "127.0.0.1:35432:5432"
+      - "127.0.0.1:18008:8008"
+
+    volumes:
+      - pg01_data:/var/lib/postgresql/patroni
+      - ./patroni.yaml:/etc/patroni/patroni.yaml:ro
+
+    depends_on:
+      etcd:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8008/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  pg-02:
+    build: .
+    image: ha-lab-patroni:4.1.5-pg17
+    restart: "no"
+
+    environment:
+      PATRONI_NAME: pg-02
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-02:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-02:5432
+      PATRONI_SUPERUSER_USERNAME: labadmin
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD}
+
+    ports:
+      - "127.0.0.1:35433:5432"
+      - "127.0.0.1:18009:8008"
+
+    volumes:
+      - pg02_data:/var/lib/postgresql/patroni
+      - ./patroni.yaml:/etc/patroni/patroni.yaml:ro
+
+    depends_on:
+      etcd:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8008/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  etcd_data:
+  pg01_data:
+  pg02_data:
