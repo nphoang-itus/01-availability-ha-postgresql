@@ -1,0 +1,97 @@
+name: ha-lab-replication
+
+services:
+  primary:
+    image: postgres:17-bookworm
+    restart: "no"
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - max_slot_wal_keep_size=256MB
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+
+    ports:
+      - "127.0.0.1:25432:5432"
+
+    volumes:
+      - primary_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U labadmin -d ha_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+
+  replica-seed:
+    image: postgres:17-bookworm
+    profiles: ["tools"]
+
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PGPASSWORD: ${REPLICATION_PASSWORD}
+
+    entrypoint: ["bash", "/scripts/seed-replica.sh"]
+
+    volumes:
+      - replica_data:/var/lib/postgresql/data
+      - ./seed-replica.sh:/scripts/seed-replica.sh:ro
+
+    depends_on:
+      primary:
+        condition: service_healthy
+
+  replica:
+    image: postgres:17-bookworm
+    restart: "no"
+    user: postgres
+
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PGPASSWORD: ${REPLICATION_PASSWORD}
+
+    entrypoint: ["bash", "-ec"]
+    command:
+      - |
+        test -s "$$PGDATA/PG_VERSION" || {
+          echo "Hãy chạy replica-seed trước."
+          exit 1
+        }
+        exec postgres -D "$$PGDATA"
+
+    ports:
+      - "127.0.0.1:25433:5432"
+
+    volumes:
+      - replica_data:/var/lib/postgresql/data
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+
+    depends_on:
+      primary:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U benchmark -d ha_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+
+volumes:
+  primary_data:
+  replica_data:
