@@ -56,6 +56,7 @@ async def main(args):
 
         async def worker():
             conn = None
+            connection_port = None
             try:
                 while True:
                     item = await queue.get()
@@ -73,15 +74,28 @@ async def main(args):
                     phase = "connect"
 
                     try:
+                        target_port = (
+                            int(Path(args.port_file).read_text().strip())
+                            if args.port_file
+                            else int(os.getenv("PGPORT", "5432"))
+                        )
+                        item["target_port"] = target_port
+
+                        if conn is not None and connection_port != target_port:
+                            await asyncio.wait_for(conn.close(), timeout=1)
+                            conn = None
+
                         if conn is None or conn.closed:
                             conn = await asyncio.wait_for(
                                 psycopg.AsyncConnection.connect(
+                                    port=target_port,
                                     connect_timeout=3,
                                     application_name="ha-lab-benchmark",
                                     options="-c statement_timeout=2000",
                                 ),
                                 timeout=4,
                             )
+                            connection_port = target_port
 
                         phase = "insert"
                         cursor = await asyncio.wait_for(
@@ -157,7 +171,7 @@ async def main(args):
                 "scheduled_offset_s": scheduled_offset,
             }
 
-            # Bỏ yêu cầu đã trễ quá nhiều, tránh phát một đợt tải bù lớn.
+            # Skip overdue requests to avoid a large catch-up burst.
             if time.monotonic() - started - scheduled_offset > 0.1:
                 item.update(
                     status="not_sent",
@@ -205,6 +219,7 @@ async def main(args):
         "target_rate": args.rate,
         "duration_s": args.duration,
         "workers": args.workers,
+        "port_file": args.port_file,
         "target": {
             key: os.getenv(key)
             for key in ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER")
@@ -242,6 +257,11 @@ if __name__ == "__main__":
     parser.add_argument("--duration", type=int, default=120)
     parser.add_argument("--workers", type=int, default=10)
     parser.add_argument("--label", default="baseline")
+    parser.add_argument(
+        "--port-file",
+        default=None,
+        help="Read the destination port from this file before each request",
+    )
     args = parser.parse_args()
 
     if min(args.rate, args.duration, args.workers) <= 0:
