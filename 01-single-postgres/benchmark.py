@@ -200,6 +200,7 @@ async def main(args):
         "run_id": run_id,
         "label": args.label,
         "started_at": started_at,
+        "started_monotonic_s": started,
         "finished_at": utc_now(),
         "target_rate": args.rate,
         "duration_s": args.duration,
