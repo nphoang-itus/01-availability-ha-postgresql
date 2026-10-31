@@ -3,7 +3,8 @@ name: ha-lab-single
 services:
   postgres:
     image: postgres:17-bookworm
-    restart: "no"
+    # restart: "no"
+    restart: unless-stopped
 
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
