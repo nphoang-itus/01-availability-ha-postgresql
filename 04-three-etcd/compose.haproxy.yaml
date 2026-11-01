@@ -1,0 +1,11 @@
+services:
+  haproxy:
+    image: haproxy:3.2-bookworm
+    restart: "no"
+
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:17000:7000"
+
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

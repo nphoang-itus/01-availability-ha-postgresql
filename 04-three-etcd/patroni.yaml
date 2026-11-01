@@ -1,0 +1,56 @@
+scope: ha-lab
+namespace: /service/
+
+restapi:
+  listen: 0.0.0.0:8008
+
+etcd3:
+  hosts:
+    - etcd-01:2379
+    - etcd-02:2379
+    - etcd-03:2379
+
+bootstrap:
+  dcs:
+    ttl: 20
+    loop_wait: 2
+    retry_timeout: 3
+    failsafe_mode: false
+
+    primary_start_timeout: 0
+    maximum_lag_on_failover: 1048576
+    check_timeline: true
+    synchronous_mode: false
+
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        wal_log_hints: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        max_slot_wal_keep_size: 256MB
+        password_encryption: scram-sha-256
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+postgresql:
+  listen: 0.0.0.0:5432
+  data_dir: /var/lib/postgresql/patroni/data
+  bin_dir: /usr/lib/postgresql/17/bin
+  pgpass: /tmp/patroni.pgpass
+
+  pg_hba:
+    - local all all trust
+    - host replication replicator 0.0.0.0/0 scram-sha-256
+    - host all all 0.0.0.0/0 scram-sha-256
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  nosync: false

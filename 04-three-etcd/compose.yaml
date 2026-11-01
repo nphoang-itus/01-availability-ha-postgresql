@@ -1,0 +1,169 @@
+name: ha-lab-three-etcd
+services:
+  pg-01:
+    build: .
+    image: ha-lab-patroni:4.1.5-pg17
+    restart: 'no'
+    environment:
+      PATRONI_NAME: pg-01
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-01:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-01:5432
+      PATRONI_SUPERUSER_USERNAME: labadmin
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD}
+    ports:
+    - 127.0.0.1:35432:5432
+    - 127.0.0.1:18008:8008
+    volumes:
+    - pg01_data:/var/lib/postgresql/patroni
+    - ./patroni.yaml:/etc/patroni/patroni.yaml:ro
+    depends_on:
+      etcd-01:
+        condition: service_healthy
+      etcd-02:
+        condition: service_healthy
+      etcd-03:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - http://127.0.0.1:8008/health
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+  pg-02:
+    build: .
+    image: ha-lab-patroni:4.1.5-pg17
+    restart: 'no'
+    environment:
+      PATRONI_NAME: pg-02
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-02:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-02:5432
+      PATRONI_SUPERUSER_USERNAME: labadmin
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD}
+    ports:
+    - 127.0.0.1:35433:5432
+    - 127.0.0.1:18009:8008
+    volumes:
+    - pg02_data:/var/lib/postgresql/patroni
+    - ./patroni.yaml:/etc/patroni/patroni.yaml:ro
+    depends_on:
+      etcd-01:
+        condition: service_healthy
+      etcd-02:
+        condition: service_healthy
+      etcd-03:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - --fail
+      - --silent
+      - http://127.0.0.1:8008/health
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+  etcd-01:
+    image: gcr.io/etcd-development/etcd:v3.6.0
+    restart: 'no'
+    command:
+    - /usr/local/bin/etcd
+    - --name=etcd-01
+    - --data-dir=/etcd-data
+    - --listen-client-urls=http://0.0.0.0:2379
+    - --advertise-client-urls=http://etcd-01:2379
+    - --listen-peer-urls=http://0.0.0.0:2380
+    - --initial-advertise-peer-urls=http://etcd-01:2380
+    - --initial-cluster=etcd-01=http://etcd-01:2380,etcd-02=http://etcd-02:2380,etcd-03=http://etcd-03:2380
+    - --initial-cluster-state=new
+    - --initial-cluster-token=ha-lab-three-etcd
+    - --enable-grpc-gateway=true
+    volumes:
+    - etcd_01_data:/etcd-data
+    healthcheck:
+      test:
+      - CMD
+      - /usr/local/bin/etcdctl
+      - --endpoints=http://127.0.0.1:2379
+      - endpoint
+      - health
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  etcd-02:
+    image: gcr.io/etcd-development/etcd:v3.6.0
+    restart: 'no'
+    command:
+    - /usr/local/bin/etcd
+    - --name=etcd-02
+    - --data-dir=/etcd-data
+    - --listen-client-urls=http://0.0.0.0:2379
+    - --advertise-client-urls=http://etcd-02:2379
+    - --listen-peer-urls=http://0.0.0.0:2380
+    - --initial-advertise-peer-urls=http://etcd-02:2380
+    - --initial-cluster=etcd-01=http://etcd-01:2380,etcd-02=http://etcd-02:2380,etcd-03=http://etcd-03:2380
+    - --initial-cluster-state=new
+    - --initial-cluster-token=ha-lab-three-etcd
+    - --enable-grpc-gateway=true
+    volumes:
+    - etcd_02_data:/etcd-data
+    healthcheck:
+      test:
+      - CMD
+      - /usr/local/bin/etcdctl
+      - --endpoints=http://127.0.0.1:2379
+      - endpoint
+      - health
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  etcd-03:
+    image: gcr.io/etcd-development/etcd:v3.6.0
+    restart: 'no'
+    command:
+    - /usr/local/bin/etcd
+    - --name=etcd-03
+    - --data-dir=/etcd-data
+    - --listen-client-urls=http://0.0.0.0:2379
+    - --advertise-client-urls=http://etcd-03:2379
+    - --listen-peer-urls=http://0.0.0.0:2380
+    - --initial-advertise-peer-urls=http://etcd-03:2380
+    - --initial-cluster=etcd-01=http://etcd-01:2380,etcd-02=http://etcd-02:2380,etcd-03=http://etcd-03:2380
+    - --initial-cluster-state=new
+    - --initial-cluster-token=ha-lab-three-etcd
+    - --enable-grpc-gateway=true
+    volumes:
+    - etcd_03_data:/etcd-data
+    healthcheck:
+      test:
+      - CMD
+      - /usr/local/bin/etcdctl
+      - --endpoints=http://127.0.0.1:2379
+      - endpoint
+      - health
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  haproxy:
+    image: haproxy:3.2-bookworm
+    restart: 'no'
+    ports:
+    - 127.0.0.1:5000:5000
+    - 127.0.0.1:17000:7000
+    volumes:
+    - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+volumes:
+  pg01_data: null
+  pg02_data: null
+  etcd_01_data: {}
+  etcd_02_data: {}
+  etcd_03_data: {}
